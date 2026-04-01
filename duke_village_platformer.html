@@ -3866,11 +3866,12 @@
             x: 74,
             y: 70,
             dir: "down",
+            noCoin: true,
             outfit: palettes.robeRed,
             accent: palettes.clothCream,
             hair: palettes.hairBrown,
             skin: palettes.skin1,
-            say: "Strong coffee, brass pots, and village gossip until sunset.",
+            say: "Fresh coffee is 5 coins.",
           });
           addVillager(cafeWest, {
             id: "westPatronTasos",
@@ -4114,12 +4115,13 @@
             x: 204,
             y: 70,
             dir: "down",
+            noCoin: true,
             outfit: palettes.robeGreen,
             accent: palettes.clothGold,
             hair: palettes.hairDark,
             skin: palettes.skin3,
             beard: true,
-            say: "Espresso, sweets, and window tables all afternoon.",
+            say: "House sweets are 7 coins.",
           });
           addVillager(cafeEast, {
             id: "eastPatronDora",
@@ -4235,6 +4237,17 @@
                 "Every rumor has been collected. Reward: 3 wind blessings.",
               afterText: "Not a single rumor remains uncollected.",
             },
+            cafeTreats: {
+              id: "cafeTreats",
+              title: "Cafe Starter",
+              giverId: null,
+              accepted: true,
+              turnedIn: false,
+              reward: 9,
+              intro: "Buy 1 coffee and 1 sweets from the village cafes.",
+              completeText: "Coffee and sweets secured. Reward: 9 coins.",
+              afterText: "Both cafe treats are already collected.",
+            },
             javaHub: {
               id: "javaHub",
               title: "Java Drill: Tech Hub",
@@ -4285,7 +4298,14 @@
               maxHp: 6,
               speech: { text: "", time: 0, max: 0, pop: 0 },
             },
-            inventory: { blueberry: 0, banana: 0, apple: 0, fruit: 0 },
+            inventory: {
+              blueberry: 0,
+              banana: 0,
+              apple: 0,
+              fruit: 0,
+              coffee: 0,
+              sweets: 0,
+            },
             coins: 0,
             progress: {
               donationCoins: 0,
@@ -4348,6 +4368,8 @@
               return state.inventory.banana >= 2 && state.inventory.apple >= 2;
             case "gossip":
               return state.progress.heardGossip.size >= totalGossip;
+            case "cafeTreats":
+              return state.inventory.coffee >= 1 && state.inventory.sweets >= 1;
             case "javaHub":
               return mcqAllMastered("techHubJava");
             case "javaSchool":
@@ -4371,6 +4393,8 @@
               return `${Math.min(state.inventory.banana, 2)}/2 bananas, ${Math.min(state.inventory.apple, 2)}/2 apples`;
             case "gossip":
               return `${state.progress.heardGossip.size}/${totalGossip} rumors`;
+            case "cafeTreats":
+              return `${Math.min(state.inventory.coffee, 1)}/1 coffee, ${Math.min(state.inventory.sweets, 1)}/1 sweets`;
             case "javaHub":
               return `${mcqMasteredCount("techHubJava")}/15 mastered`;
             case "javaSchool":
@@ -4410,6 +4434,31 @@
             20,
           );
           showNotice("Gossip quest complete. Wind blessings unlocked ×3.", 3.0);
+          updateHud();
+          maybeWin();
+          return true;
+        }
+
+        function maybeCompleteCafeQuest() {
+          const q = state.quests.cafeTreats;
+          if (!q || q.turnedIn) return false;
+          if (state.inventory.coffee < 1 || state.inventory.sweets < 1)
+            return false;
+          q.turnedIn = true;
+          state.coins += q.reward;
+          showDialogue(
+            "Village",
+            `Cafe Starter complete. Reward: ${q.reward} coins. Aii.`,
+            4.2,
+          );
+          state.floaters.push({
+            x: state.player.x - 10,
+            y: state.player.y - 10,
+            text: `+${q.reward} coins`,
+            life: 1.1,
+            color: "#ffe38b",
+          });
+          showNotice("Cafe Starter complete.", 2.6);
           updateHud();
           maybeWin();
           return true;
@@ -5622,6 +5671,48 @@
           return { isNew, completed, text: v.gossip };
         }
 
+        function handleCafePurchase(v) {
+          const menu = {
+            baristaWest: {
+              item: "coffee",
+              label: "coffee",
+              cost: 5,
+              icon: "☕",
+            },
+            baristaEast: {
+              item: "sweets",
+              label: "sweets",
+              cost: 7,
+              icon: "🍰",
+            },
+          };
+          const offer = menu[v.id];
+          if (!offer) return false;
+
+          if (state.coins < offer.cost) {
+            showDialogue(
+              v.name,
+              `A ${offer.label} costs ${offer.cost} coins. You have ${state.coins}.`,
+              3.1,
+            );
+            return true;
+          }
+
+          state.coins -= offer.cost;
+          state.inventory[offer.item] += 1;
+          v.bop = 0.35;
+          showDialogue(
+            v.name,
+            `One ${offer.label} for ${offer.cost} coins. Enjoy.`,
+            2.9,
+          );
+          showNotice(`${offer.icon} +1 ${offer.label}`, 1.6);
+          maybeCompleteCafeQuest();
+          updateHud();
+          if (navigator.vibrate) navigator.vibrate(10);
+          return true;
+        }
+
         function interactVillager(v, fromTap = false) {
           state.progress.touchedVillagers.add(v.id);
           const gossip = recordGossip(v);
@@ -5630,6 +5721,8 @@
             const q = state.quests[v.questId];
             handledQuest = handleQuestVillager(v, q);
           }
+          const handledPurchase = handleCafePurchase(v);
+          if (handledPurchase) return true;
           let paid = false;
           if (!v.noCoin && v.coinCooldown <= 0) {
             const payout = v.questId ? randInt(3, 5) : randInt(1, 4);
