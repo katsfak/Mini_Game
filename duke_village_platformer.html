@@ -263,6 +263,92 @@
         color: #fffef7;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
       }
+      #minimapDock {
+        position: fixed;
+        top: calc(var(--safe-top) + 400px);
+        right: var(--safe-right);
+        z-index: 7;
+        pointer-events: auto;
+      }
+      .minimapCard {
+        background: rgba(11, 18, 26, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 14px;
+        padding: 8px;
+        box-shadow: 0 12px 26px rgba(0, 0, 0, 0.34);
+        backdrop-filter: blur(9px);
+      }
+      .minimapTitle {
+        font-size: clamp(10px, 1.8vw, 12px);
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #f6e087;
+        margin-bottom: 5px;
+      }
+      #miniMapCanvas {
+        width: min(40vw, 180px);
+        height: calc(min(40vw, 180px) * 0.62);
+        min-width: 130px;
+        min-height: 80px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: #12202a;
+        display: block;
+        cursor: pointer;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+      .minimapHint {
+        margin-top: 5px;
+        font-size: clamp(9px, 1.65vw, 11px);
+        color: rgba(237, 246, 255, 0.84);
+      }
+      #fullMapOverlay {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: max(18px, var(--safe-top)) max(12px, var(--safe-right))
+          max(18px, var(--safe-bottom)) max(12px, var(--safe-left));
+        background: rgba(7, 12, 18, 0.78);
+        backdrop-filter: blur(8px);
+        z-index: 12;
+      }
+      #fullMapOverlay.show {
+        display: flex;
+      }
+      .fullMapCard {
+        width: min(94vw, 980px);
+        max-height: min(90vh, 760px);
+        background: rgba(12, 18, 24, 0.96);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 20px;
+        box-shadow: 0 24px 56px rgba(0, 0, 0, 0.42);
+        padding: 14px;
+      }
+      .fullMapTop {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .fullMapTitle {
+        font-size: clamp(13px, 2.5vw, 17px);
+        font-weight: 900;
+        color: #fff9d6;
+        letter-spacing: 0.04em;
+      }
+      #fullMapCanvas {
+        width: 100%;
+        height: min(68vh, 560px);
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+        background: #101b26;
+        display: block;
+      }
       #dialogue {
         position: fixed;
         left: 50%;
@@ -855,6 +941,19 @@
     <div id="app">
       <canvas id="glcanvas"></canvas>
 
+      <div id="minimapDock">
+        <div class="minimapCard">
+          <div class="minimapTitle">Village Map</div>
+          <canvas
+            id="miniMapCanvas"
+            width="180"
+            height="112"
+            aria-label="Minimap. Click to open full map"
+          ></canvas>
+          <div class="minimapHint">Click to expand</div>
+        </div>
+      </div>
+
       <div class="hud">
         <div
           class="stack"
@@ -1012,6 +1111,16 @@
         </div>
       </div>
 
+      <div id="fullMapOverlay" aria-hidden="true">
+        <div class="fullMapCard" role="dialog" aria-modal="true">
+          <div class="fullMapTop">
+            <div class="fullMapTitle" id="fullMapTitle">Full Map</div>
+            <button class="miniBtn" id="fullMapCloseBtn">Close Map</button>
+          </div>
+          <canvas id="fullMapCanvas" width="940" height="560"></canvas>
+        </div>
+      </div>
+
       <div id="banner">
         <div class="bannerCard">
           <h1>Village Complete</h1>
@@ -1072,6 +1181,17 @@
         const mcqBody = document.getElementById("mcqBody");
         const mcqActions = document.getElementById("mcqActions");
         const mcqCloseBtn = document.getElementById("mcqCloseBtn");
+        const miniMapCanvas = document.getElementById("miniMapCanvas");
+        const fullMapOverlay = document.getElementById("fullMapOverlay");
+        const fullMapCanvas = document.getElementById("fullMapCanvas");
+        const fullMapTitle = document.getElementById("fullMapTitle");
+        const fullMapCloseBtn = document.getElementById("fullMapCloseBtn");
+        const miniMapCtx = miniMapCanvas
+          ? miniMapCanvas.getContext("2d", { alpha: false })
+          : null;
+        const fullMapCtx = fullMapCanvas
+          ? fullMapCanvas.getContext("2d", { alpha: false })
+          : null;
 
         const scene = document.createElement("canvas");
         const BASE_VIRTUAL_W = 320;
@@ -1112,6 +1232,7 @@
         let sceneTextureW = scene.width;
         let sceneTextureH = scene.height;
         let canvasTap = null;
+        let fullMapOpen = false;
         const joystick = {
           pointerId: null,
           active: false,
@@ -6601,6 +6722,11 @@
           updateNotice(dt);
           updateSpeech(dt);
           updateDialogue(dt);
+          if (fullMapOpen) {
+            refreshBattleUi();
+            input.actionPressed = false;
+            return;
+          }
           if (state.mcq.open) {
             refreshBattleUi();
             input.actionPressed = false;
@@ -9416,6 +9542,217 @@
             );
         }
 
+        function drawMapPanel(
+          targetCtx,
+          width,
+          height,
+          map,
+          showCamera,
+          showQuestPanel = false,
+        ) {
+          if (!targetCtx || !map) return;
+          targetCtx.clearRect(0, 0, width, height);
+          targetCtx.fillStyle =
+            map.type === "overworld" ? "#1a3521" : "#2d243a";
+          targetCtx.fillRect(0, 0, width, height);
+
+          const pad = 5;
+          const scale = Math.min(
+            (width - pad * 2) / Math.max(1, map.width),
+            (height - pad * 2) / Math.max(1, map.height),
+          );
+          const ox = Math.floor((width - map.width * scale) * 0.5);
+          const oy = Math.floor((height - map.height * scale) * 0.5);
+          const sx = (v) => ox + v * scale;
+          const sy = (v) => oy + v * scale;
+
+          targetCtx.fillStyle =
+            map.type === "overworld" ? "#4a8748" : "#5f4f73";
+          targetCtx.fillRect(
+            sx(0),
+            sy(0),
+            map.width * scale,
+            map.height * scale,
+          );
+
+          if (map.paths?.length) {
+            targetCtx.fillStyle = "#c5a871";
+            for (const p of map.paths)
+              targetCtx.fillRect(sx(p.x), sy(p.y), p.w * scale, p.h * scale);
+          }
+          if (map.ponds?.length) {
+            targetCtx.fillStyle = "#498cc0";
+            for (const pond of map.ponds)
+              targetCtx.fillRect(
+                sx(pond.x),
+                sy(pond.y),
+                pond.w * scale,
+                pond.h * scale,
+              );
+          }
+          if (map.buildings?.length) {
+            targetCtx.fillStyle = "#e5d4b0";
+            for (const b of map.buildings)
+              targetCtx.fillRect(sx(b.x), sy(b.y), b.w * scale, b.h * scale);
+          }
+          if (map.doors?.length) {
+            targetCtx.fillStyle = "#ffe6a7";
+            for (const door of map.doors)
+              targetCtx.fillRect(
+                sx(door.x),
+                sy(door.y),
+                Math.max(1.5, door.w * scale),
+                Math.max(1.5, door.h * scale),
+              );
+          }
+          if (map.fruits?.length) {
+            for (const fruit of map.fruits) {
+              if (fruit.collected) continue;
+              targetCtx.fillStyle =
+                fruit.kind === "blueberry"
+                  ? "#7f66db"
+                  : fruit.kind === "banana"
+                    ? "#f0d255"
+                    : "#d96f60";
+              targetCtx.fillRect(
+                sx(fruit.x + fruit.w * 0.5) - 1,
+                sy(fruit.y + fruit.h * 0.5) - 1,
+                2,
+                2,
+              );
+            }
+          }
+          if (map.villagers?.length) {
+            for (const v of map.villagers) {
+              let color = "#d8f5ff";
+              if (v.questId && state.quests[v.questId]) {
+                const q = state.quests[v.questId];
+                if (q.turnedIn) color = "#94e48f";
+                else if (questReady(q)) color = "#ffe08b";
+                else color = "#ff8ea2";
+              }
+              targetCtx.fillStyle = color;
+              targetCtx.fillRect(
+                sx(v.x + v.w * 0.5) - 1,
+                sy(v.y + v.h * 0.5) - 1,
+                3,
+                3,
+              );
+            }
+          }
+
+          if (showCamera && state.camera) {
+            targetCtx.strokeStyle = "rgba(255,255,255,0.72)";
+            targetCtx.lineWidth = 1;
+            targetCtx.strokeRect(
+              sx(state.camera.x),
+              sy(state.camera.y),
+              scene.width * scale,
+              scene.height * scale,
+            );
+          }
+
+          if (state.player) {
+            const px = sx(state.player.x + state.player.w * 0.5);
+            const py = sy(state.player.y + state.player.h * 0.5);
+            targetCtx.fillStyle = "#ffe38a";
+            targetCtx.fillRect(px - 2, py - 2, 4, 4);
+          }
+          const boss = map.id === "overworld" ? activeOverworldBoss() : null;
+          if (boss) {
+            const bx = sx(boss.x + boss.w * 0.5);
+            const by = sy(boss.y + boss.h * 0.5);
+            targetCtx.fillStyle = "#f36d7f";
+            targetCtx.fillRect(bx - 2, by - 2, 4, 4);
+          }
+
+          if (showQuestPanel) {
+            const activeQuests = Object.values(state.quests).filter(
+              (q) => q.accepted && !q.turnedIn,
+            );
+            const panelW = Math.min(302, Math.max(188, width * 0.42));
+            const panelX = width - panelW - 8;
+            const lineH = 12;
+            const maxRows = Math.max(4, Math.floor((height - 34) / lineH) - 1);
+            const rows = activeQuests.slice(0, maxRows);
+            const panelH = 28 + rows.length * lineH;
+            targetCtx.fillStyle = "rgba(6,10,16,0.72)";
+            targetCtx.fillRect(panelX, 8, panelW, panelH);
+            targetCtx.strokeStyle = "rgba(255,255,255,0.2)";
+            targetCtx.lineWidth = 1;
+            targetCtx.strokeRect(panelX + 0.5, 8.5, panelW - 1, panelH - 1);
+
+            targetCtx.font = "bold 11px monospace";
+            targetCtx.fillStyle = "#fff2b0";
+            targetCtx.fillText("Active Quests", panelX + 8, 14);
+
+            if (!rows.length) {
+              targetCtx.font = "10px monospace";
+              targetCtx.fillStyle = "#cfe4ff";
+              targetCtx.fillText("No active quests", panelX + 8, 28);
+            } else {
+              targetCtx.font = "10px monospace";
+              let rowY = 28;
+              for (const q of rows) {
+                targetCtx.fillStyle = questReady(q) ? "#baf7ad" : "#ffd8de";
+                targetCtx.fillText(
+                  `${questReady(q) ? "*" : "-"} ${q.title}: ${questProgress(q)}`,
+                  panelX + 8,
+                  rowY,
+                );
+                rowY += lineH;
+              }
+            }
+          }
+        }
+
+        function drawMinimap() {
+          if (!miniMapCtx || !state) return;
+          drawMapPanel(
+            miniMapCtx,
+            miniMapCanvas.width,
+            miniMapCanvas.height,
+            currentMap(),
+            true,
+          );
+        }
+
+        function drawFullMap() {
+          if (!fullMapCtx || !state) return;
+          const map = currentMap();
+          drawMapPanel(
+            fullMapCtx,
+            fullMapCanvas.width,
+            fullMapCanvas.height,
+            map,
+            true,
+            true,
+          );
+          if (fullMapTitle)
+            fullMapTitle.textContent = `${map.name} - Full Map + Quest Markers`;
+        }
+
+        function openFullMap() {
+          if (!fullMapOverlay || fullMapOpen) return;
+          fullMapOpen = true;
+          clearMovementInputs();
+          fullMapOverlay.classList.add("show");
+          fullMapOverlay.setAttribute("aria-hidden", "false");
+          drawFullMap();
+        }
+
+        function closeFullMap() {
+          if (!fullMapOverlay || !fullMapOpen) return;
+          fullMapOpen = false;
+          fullMapOverlay.classList.remove("show");
+          fullMapOverlay.setAttribute("aria-hidden", "true");
+        }
+
+        function toggleFullMap() {
+          if (fullMapOpen) closeFullMap();
+          else openFullMap();
+        }
+
         function render() {
           ctx.clearRect(0, 0, scene.width, scene.height);
           const map = currentMap();
@@ -9478,6 +9815,8 @@
           if (map.type === "interior")
             pixelText(map.name, 8, 6, "#fff6c2", "left", 8, "bold");
           drawTransition();
+          drawMinimap();
+          if (fullMapOpen) drawFullMap();
         }
 
         function initRenderer() {
@@ -9699,11 +10038,23 @@
         window.addEventListener(
           "keydown",
           (e) => {
+            if (fullMapOpen) {
+              if (["Escape", "m", "M"].includes(e.key)) {
+                closeFullMap();
+                e.preventDefault();
+              }
+              return;
+            }
             if (state?.mcq?.open) {
               if (handleMcqKeydown(e)) {
                 e.preventDefault();
                 return;
               }
+              return;
+            }
+            if (["m", "M"].includes(e.key)) {
+              toggleFullMap();
+              e.preventDefault();
               return;
             }
             if (["ArrowUp", "w", "W"].includes(e.key)) {
@@ -9744,6 +10095,10 @@
         window.addEventListener(
           "keyup",
           (e) => {
+            if (fullMapOpen) {
+              if (["Escape", "m", "M"].includes(e.key)) e.preventDefault();
+              return;
+            }
             if (state?.mcq?.open) {
               if (
                 [
@@ -9888,6 +10243,20 @@
           },
           { passive: true },
         );
+
+        miniMapCanvas?.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openFullMap();
+        });
+        fullMapCloseBtn?.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeFullMap();
+        });
+        fullMapOverlay?.addEventListener("click", (ev) => {
+          if (ev.target === fullMapOverlay) closeFullMap();
+        });
 
         hudLeft.addEventListener("click", (ev) => {
           ev.preventDefault();
