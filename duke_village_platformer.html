@@ -1651,6 +1651,32 @@
           dialogueEl.classList.remove("show");
           maybeOpenPendingMcq();
         }
+
+        function nightAmount() {
+          if (!state || !state.timeOfDay) return 0;
+          const sun = Math.cos((state.timeOfDay - 0.25) * Math.PI * 2);
+          return clamp((-sun - 0.05) / 0.95, 0, 1);
+        }
+
+        function isNightTime() {
+          return nightAmount() > 0.45;
+        }
+
+        function updateDayNight(dt) {
+          if (!state) return;
+          const wasNight = isNightTime();
+          state.timeOfDay = (state.timeOfDay + dt * state.dayNightSpeed) % 1;
+          const nowNight = isNightTime();
+          if (wasNight !== nowNight && state.currentMap === "overworld") {
+            showNotice(
+              nowNight
+                ? "Night falls. Night quests and special dialogs are now active."
+                : "Dawn breaks over the village.",
+              2.6,
+            );
+            updateHud();
+          }
+        }
         function showSpeech(text, duration = 1.15) {
           state.player.speech.text = text;
           state.player.speech.time = duration;
@@ -2378,6 +2404,7 @@
             coinCooldown: 0,
             bop: 0,
             say: opts.say || "Blessings.",
+            nightSay: opts.nightSay || null,
             gossip:
               opts.gossip || opts.say || "Did you hear anything interesting?",
             countsForGossip:
@@ -3112,6 +3139,8 @@
             beard: true,
             roam: 10,
             say: "They say even the northern pond hears gossip before the tech steward does.",
+            nightSay:
+              "The northern pool is clear tonight. If you step in, the moonlight carries your prayer.",
           });
           addVillager(overworld, {
             id: "barba",
@@ -3137,6 +3166,8 @@
             skin: palettes.skin1,
             roam: 12,
             say: "Everyone argues West Coffee is stronger, but East Coffee gets the juicier stories.",
+            nightSay:
+              "At night the piazza sounds quieter, but every table somehow talks louder.",
           });
           addVillager(overworld, {
             id: "nikosSquare",
@@ -3192,6 +3223,8 @@
             hair: palettes.hairDark,
             skin: palettes.skin2,
             say: "One more hand of Tichu outside West Coffee, then I am getting another espresso.",
+            nightSay:
+              "Now this is proper timing. Under moonlight, every Tichu call feels dangerous.",
           });
           addVillager(overworld, {
             id: "yorgosTichu",
@@ -3210,6 +3243,8 @@
             skin: palettes.skin3,
             beard: true,
             say: "Watch this hand, Christos. If my opening is clean, I am calling Grand Tichu and taking the whole table.",
+            nightSay:
+              "Midnight table, calm hands. One wrong read and Grand Tichu turns into a disaster.",
           });
           for (const schoolVisitor of [
             {
@@ -4336,6 +4371,36 @@
                 "Oops. The chicken did it, and now I made a stove. Reward: 8 coins.",
               afterText: "Oops... the stove actually works.",
             },
+            moonSwim: {
+              id: "moonSwim",
+              title: "Moonlight Swim",
+              giverId: "takis",
+              accepted: false,
+              turnedIn: false,
+              reward: 12,
+              nightOnly: true,
+              dayText:
+                "Come back after sunset. The northern pool only counts at night.",
+              intro:
+                "After dark, dip into the northern pool and report back to me.",
+              completeText: "You touched the moonlit water. Reward: 12 coins.",
+              afterText: "That pool glows best under moonlight.",
+            },
+            grandTichuNight: {
+              id: "grandTichuNight",
+              title: "Grand Tichu Witness",
+              giverId: "yorgosTichu",
+              accepted: false,
+              turnedIn: false,
+              reward: 10,
+              nightOnly: true,
+              dayText: "Come back at night. Grand Tichu belongs to late hours.",
+              intro:
+                "Tonight, speak with Christos while the table is hot, then report back.",
+              completeText:
+                "You witnessed the midnight call. Grand Tichu quest complete. Reward: 10 coins.",
+              afterText: "Grand Tichu at night is a different game.",
+            },
             javaHub: {
               id: "javaHub",
               title: "Java Drill: Tech Hub",
@@ -4402,7 +4467,11 @@
               entered: new Set(),
               touchedVillagers: new Set(),
               heardGossip: new Set(),
+              nightTalked: new Set(),
+              nightPoolTouch: false,
             },
+            timeOfDay: 0.28,
+            dayNightSpeed: 1 / 300,
             quests: createQuestState(),
             dialog: { open: false, text: "", speaker: "", time: 0 },
             transition: {
@@ -4461,6 +4530,10 @@
               return state.inventory.coffee >= 1 && state.inventory.sweets >= 1;
             case "athinaChicken":
               return state.chickens.length >= 1;
+            case "moonSwim":
+              return state.progress.nightPoolTouch;
+            case "grandTichuNight":
+              return state.progress.nightTalked.has("christosTichu");
             case "javaHub":
               return mcqAllMastered("techHubJava");
             case "javaSchool":
@@ -4488,6 +4561,14 @@
               return `${Math.min(state.inventory.coffee, 1)}/1 coffee, ${Math.min(state.inventory.sweets, 1)}/1 sweets`;
             case "athinaChicken":
               return `${Math.min(state.chickens.length, 1)}/1 chicken`;
+            case "moonSwim":
+              return state.progress.nightPoolTouch
+                ? "moonlit pool touched"
+                : "touch the northern pool at night";
+            case "grandTichuNight":
+              return state.progress.nightTalked.has("christosTichu")
+                ? "Christos spoke"
+                : "speak with Christos at night";
             case "javaHub":
               return `${mcqMasteredCount("techHubJava")}/15 mastered`;
             case "javaSchool":
@@ -4979,6 +5060,7 @@
             `<span>🍎 <strong>${state.inventory.apple}</strong></span>`,
             `<span>🧺 <strong>${state.inventory.fruit}/${totalFruit}</strong></span>`,
             `<span>🪙 <strong>${state.coins}</strong></span>`,
+            `<span>${isNightTime() ? "🌙" : "☀"} <strong>${isNightTime() ? "night" : "day"}</strong></span>`,
             `<span>🗣 <strong>${state.progress.heardGossip.size}/${totalGossip}</strong></span>`,
             `<span>🐔 <strong>${state.chickens.length}</strong></span>`,
             `<span>🌧 <strong>${state.weather.rainTimer > 0.01 ? "on" : "—"}</strong></span>`,
@@ -5562,6 +5644,18 @@
               (enterDir === "right" && dx > 0 && state.player.dir === "right");
             const shouldEnter = active && (actionTriggered || movingIntoDoor);
             if (shouldEnter) {
+              if (map.id === "overworld" && isNightTime()) {
+                const nightOpen =
+                  door.targetMap === "cafeWest" ||
+                  door.targetMap === "cafeEast";
+                if (!nightOpen) {
+                  showNotice(
+                    "Closed for the night. Only West Coffee and East Coffee are open.",
+                    2.8,
+                  );
+                  return true;
+                }
+              }
               state.progress.entered.add(door.targetMap);
               startTransition(
                 door.targetMap,
@@ -5719,6 +5813,14 @@
         }
 
         function handleQuestVillager(v, q) {
+          if (q.nightOnly && !isNightTime()) {
+            showDialogue(
+              v.name,
+              q.dayText || "Come back at night for this quest.",
+              3.2,
+            );
+            return true;
+          }
           if (!q.accepted) {
             q.accepted = true;
             showDialogue(v.name, q.intro, 4.4);
@@ -5829,6 +5931,11 @@
 
         function interactVillager(v, fromTap = false) {
           state.progress.touchedVillagers.add(v.id);
+          if (isNightTime()) {
+            if (v.id === "christosTichu" || v.id === "eleniSquare") {
+              state.progress.nightTalked.add(v.id);
+            }
+          }
           const gossip = recordGossip(v);
           let handledQuest = false;
           if (v.questId) {
@@ -5852,6 +5959,11 @@
             if (navigator.vibrate) navigator.vibrate(10);
           }
           if (gossip.completed) return true;
+          if (!handledQuest && isNightTime() && v.nightSay) {
+            showDialogue(v.name, v.nightSay, 3.2);
+            if (v.mcqSet) queueMcqOpen(v.mcqSet);
+            return true;
+          }
           if (!handledQuest && gossip.text) {
             const suffix =
               gossip.isNew && v.countsForGossip
@@ -6346,6 +6458,9 @@
           state.player.inWater =
             map.id === "overworld" &&
             map.ponds.some((pond) => overlap(playerBodyAfterMove, pond));
+          if (state.player.inWater && isNightTime() && map.id === "overworld") {
+            state.progress.nightPoolTouch = true;
+          }
 
           if (moving) {
             state.player.stepClock += dt * (state.player.inWater ? 7 : 10);
@@ -6409,6 +6524,7 @@
         }
 
         function update(dt) {
+          updateDayNight(dt);
           updateNotice(dt);
           updateSpeech(dt);
           updateDialogue(dt);
@@ -9140,6 +9256,18 @@
           ctx.restore();
         }
 
+        function drawDayNightOverlay(timeSec) {
+          if (currentMap().type !== "overworld") return;
+          const n = nightAmount();
+          if (n <= 0.001) return;
+          ctx.save();
+          ctx.globalAlpha = n * 0.38;
+          rect(0, 0, scene.width, scene.height, "#0d1b33");
+          ctx.globalAlpha = n * 0.22;
+          rect(0, 0, scene.width, 44, "#13284a");
+          ctx.restore();
+        }
+
         function drawParticles() {
           for (const p of state.particles) {
             const sx = p.x - state.camera.x;
@@ -9228,6 +9356,7 @@
           drawPriestAttackFx();
           if (map.id === "overworld") drawBossProjectiles();
           for (const v of map.villagers) drawQuestMarker(v, timeSec);
+          drawDayNightOverlay(timeSec);
           drawWeatherEffects(timeSec);
           drawWindEffects(timeSec);
           drawParticles();
