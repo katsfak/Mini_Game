@@ -3136,6 +3136,19 @@
             roam: 14,
             say: "People whisper the south road carries more gossip than the piazza by dusk.",
           });
+          addVillager(overworld, {
+            id: "athina",
+            name: "Athina",
+            x: 444,
+            y: 792,
+            questId: "athinaChicken",
+            outfit: palettes.robePurple,
+            accent: palettes.clothCream,
+            hair: palettes.hairBrown,
+            skin: palettes.skin1,
+            roam: 10,
+            say: "If you bring me a chicken, I can try a new cooking setup.",
+          });
           for (const schoolVisitor of [
             {
               id: "schoolyardLia",
@@ -4248,6 +4261,19 @@
               completeText: "Coffee and sweets secured. Reward: 9 coins.",
               afterText: "Both cafe treats are already collected.",
             },
+            athinaChicken: {
+              id: "athinaChicken",
+              title: "Athina's Chicken Stove",
+              giverId: "athina",
+              accepted: false,
+              turnedIn: false,
+              reward: 8,
+              intro:
+                "Can you bring me one chicken? I want to test a tiny stove build.",
+              completeText:
+                "Oops. The chicken did it, and now I made a stove. Reward: 8 coins.",
+              afterText: "Oops... the stove actually works.",
+            },
             javaHub: {
               id: "javaHub",
               title: "Java Drill: Tech Hub",
@@ -4370,6 +4396,8 @@
               return state.progress.heardGossip.size >= totalGossip;
             case "cafeTreats":
               return state.inventory.coffee >= 1 && state.inventory.sweets >= 1;
+            case "athinaChicken":
+              return state.chickens.length >= 1;
             case "javaHub":
               return mcqAllMastered("techHubJava");
             case "javaSchool":
@@ -4395,6 +4423,8 @@
               return `${state.progress.heardGossip.size}/${totalGossip} rumors`;
             case "cafeTreats":
               return `${Math.min(state.inventory.coffee, 1)}/1 coffee, ${Math.min(state.inventory.sweets, 1)}/1 sweets`;
+            case "athinaChicken":
+              return `${Math.min(state.chickens.length, 1)}/1 chicken`;
             case "javaHub":
               return `${mcqMasteredCount("techHubJava")}/15 mastered`;
             case "javaSchool":
@@ -4462,6 +4492,21 @@
           updateHud();
           maybeWin();
           return true;
+        }
+
+        function spawnAthinaStove() {
+          const map = state.maps.overworld;
+          if (!map) return;
+          if (map.decor.some((d) => d.type === "athinaStove")) return;
+          addDecor(map, {
+            type: "athinaStove",
+            x: 468,
+            y: 804,
+            w: 14,
+            h: 14,
+            solid: true,
+            kind: "stove",
+          });
         }
 
         function retreatBoss(noticeText = "") {
@@ -5616,6 +5661,10 @@
             return true;
           }
           if (!q.turnedIn && questReady(q)) {
+            if (q.id === "athinaChicken" && state.chickens.length > 0) {
+              state.chickens.shift();
+              spawnAthinaStove();
+            }
             q.turnedIn = true;
             state.coins += q.reward;
             state.progress.donationCoins += 0;
@@ -7827,12 +7876,42 @@
           rect(sx + 4, sy + 16, 4, 6, "#7aa962");
         }
 
+        function drawAthinaStove(sx, sy) {
+          const t = performance.now() * 0.001;
+          const flicker = (Math.sin(t * 14 + sx * 0.09) + 1) * 0.5;
+          const ember = flicker > 0.52 ? "#ffcf6b" : "#ff9d42";
+
+          rect(sx, sy + 10, 14, 4, "#23262c");
+          rect(sx, sy + 2, 14, 8, "#444b55");
+          rect(sx + 1, sy + 3, 12, 6, "#5b6470");
+          rect(sx + 3, sy + 5, 4, 3, "#1f2329");
+          rect(sx + 8, sy + 5, 3, 3, "#1f2329");
+          rect(sx + 4, sy + 0, 6, 2, "#7f8793");
+          rect(sx + 6, sy + 11, 2, 2, ember);
+
+          const flameLift = Math.floor(
+            (Math.sin(t * 18 + sy * 0.07) + 1) * 0.5 * 2,
+          );
+          rect(sx + 6, sy + 10 - flameLift, 1, 1, "#ffd977");
+          rect(sx + 7, sy + 9 - flameLift, 1, 1, "#ffb85a");
+
+          for (let i = 0; i < 3; i++) {
+            const phase = (t * 0.6 + i * 0.27) % 1;
+            const smokeX = sx + 5 + i * 2 + (i & 1 ? 1 : 0);
+            const smokeY = sy - 2 - Math.floor(phase * 6);
+            const smokeColor =
+              phase > 0.66 ? "#8e949c" : phase > 0.33 ? "#a8aeb5" : "#c2c7cd";
+            rect(smokeX, smokeY, 1, 1, smokeColor);
+          }
+        }
+
         function drawDecorItem(item) {
           const sx = item.x - state.camera.x;
           const sy = item.y - state.camera.y;
           if (item.type === "bench") drawBench(sx, sy);
           else if (item.type === "table") drawCafeTable(sx, sy);
           else if (item.type === "bigTree") drawBigTree(sx, sy);
+          else if (item.type === "athinaStove") drawAthinaStove(sx, sy);
         }
 
         function drawTree(sx, sy, r) {
