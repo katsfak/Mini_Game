@@ -2596,6 +2596,33 @@
           addDecor(overworld, { type: "table", x: 644, y: 358, w: 12, h: 12 });
           addDecor(overworld, { type: "table", x: 988, y: 332, w: 12, h: 12 });
           addDecor(overworld, { type: "table", x: 956, y: 358, w: 12, h: 12 });
+          addDecor(overworld, {
+            type: "table",
+            x: 560,
+            y: 332,
+            w: 12,
+            h: 12,
+            solid: true,
+            kind: "table",
+          });
+          addDecor(overworld, {
+            type: "chair",
+            x: 548,
+            y: 333,
+            w: 8,
+            h: 8,
+            solid: true,
+            kind: "chair",
+          });
+          addDecor(overworld, {
+            type: "chair",
+            x: 574,
+            y: 333,
+            w: 8,
+            h: 8,
+            solid: true,
+            kind: "chair",
+          });
 
           overworld.grassPatches.push(
             { x: 58, y: 224, w: 230, h: 138, kind: "berry" },
@@ -3148,6 +3175,41 @@
             skin: palettes.skin1,
             roam: 10,
             say: "If you bring me a chicken, I can try a new cooking setup.",
+          });
+          addVillager(overworld, {
+            id: "christosTichu",
+            name: "Christos",
+            x: 548,
+            y: 330,
+            dir: "right",
+            roam: 0,
+            blocksPlayer: false,
+            blocksNPC: false,
+            countsForGossip: false,
+            noCoin: true,
+            outfit: palettes.robeBlue,
+            accent: palettes.clothCream,
+            hair: palettes.hairDark,
+            skin: palettes.skin2,
+            say: "One more hand of Tichu outside West Coffee, then I am getting another espresso.",
+          });
+          addVillager(overworld, {
+            id: "yorgosTichu",
+            name: "Yorgos",
+            x: 574,
+            y: 330,
+            dir: "left",
+            roam: 0,
+            blocksPlayer: false,
+            blocksNPC: false,
+            countsForGossip: false,
+            noCoin: true,
+            outfit: palettes.robeGreen,
+            accent: palettes.clothGold,
+            hair: palettes.hairGray,
+            skin: palettes.skin3,
+            beard: true,
+            say: "Watch this hand, Christos. If my opening is clean, I am calling Grand Tichu and taking the whole table.",
           });
           for (const schoolVisitor of [
             {
@@ -7864,6 +7926,13 @@
           rect(sx + 4, sy + 0, 4, 2, "#7b593d");
         }
 
+        function drawChair(sx, sy) {
+          rect(sx + 1, sy + 2, 6, 4, "#8a5a34");
+          rect(sx + 2, sy + 1, 4, 2, "#b07a4a");
+          rect(sx + 1, sy + 6, 1, 2, "#6a462d");
+          rect(sx + 6, sy + 6, 1, 2, "#6a462d");
+        }
+
         function drawBigTree(sx, sy) {
           rect(sx - 12, sy + 20, 24, 16, "#6d482e");
           rect(sx - 16, sy + 34, 32, 4, "rgba(0,0,0,0.16)");
@@ -7910,6 +7979,7 @@
           const sy = item.y - state.camera.y;
           if (item.type === "bench") drawBench(sx, sy);
           else if (item.type === "table") drawCafeTable(sx, sy);
+          else if (item.type === "chair") drawChair(sx, sy);
           else if (item.type === "bigTree") drawBigTree(sx, sy);
           else if (item.type === "athinaStove") drawAthinaStove(sx, sy);
         }
