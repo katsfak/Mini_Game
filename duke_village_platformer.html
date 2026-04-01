@@ -933,7 +933,7 @@
       </div>
 
       <div id="battleHud" aria-hidden="true">
-        <div class="battleTitle">ENDERMAR</div>
+        <div class="battleTitle" id="battleTitle">ENDERMAR</div>
         <div class="battleRow">
           <span>Priest</span>
           <div class="battleBar">
@@ -1054,6 +1054,7 @@
         const joystickBase = document.getElementById("joystickBase");
         const joystickThumb = document.getElementById("joystickThumb");
         const battleHud = document.getElementById("battleHud");
+        const battleTitle = document.getElementById("battleTitle");
         const battleControls = document.getElementById("battleControls");
         const attackBtn = document.getElementById("attackBtn");
         const priestHpFill = document.getElementById("priestHpFill");
@@ -1667,6 +1668,16 @@
           const wasNight = isNightTime();
           state.timeOfDay = (state.timeOfDay + dt * state.dayNightSpeed) % 1;
           const nowNight = isNightTime();
+          if (wasNight !== nowNight) {
+            retreatBoss();
+            if (state?.nightEnemy) {
+              state.nightEnemy.active = false;
+              state.nightEnemy.projectiles.length = 0;
+              state.nightEnemy.x = state.nightEnemy.originX;
+              state.nightEnemy.y = state.nightEnemy.originY;
+              state.nightEnemy.dir = "down";
+            }
+          }
           if (wasNight !== nowNight && state.currentMap === "overworld") {
             showNotice(
               nowNight
@@ -2212,6 +2223,33 @@
           };
         }
 
+        function createNether() {
+          return {
+            id: "nether",
+            name: "Nether",
+            x: 780,
+            y: 198,
+            w: 18,
+            h: 20,
+            originX: 780,
+            originY: 198,
+            dir: "down",
+            hp: 18,
+            maxHp: 18,
+            active: false,
+            alive: true,
+            introSeen: false,
+            invuln: 0,
+            hitFlash: 0,
+            step: 0,
+            contactCooldown: 0,
+            orbCooldown: 1.1,
+            projectiles: [],
+            reward: 70,
+            arena: { x: 642, y: 146, w: 304, h: 238 },
+          };
+        }
+
         function playerCenter() {
           return {
             x: state.player.x + state.player.w * 0.5,
@@ -2223,12 +2261,33 @@
           return !!(state && state.boss && state.boss.alive);
         }
 
+        function nightEnemyExists() {
+          return !!(state && state.nightEnemy && state.nightEnemy.alive);
+        }
+
         function bossInOverworld() {
-          return bossExists() && state.currentMap === "overworld";
+          return (
+            bossExists() && state.currentMap === "overworld" && !isNightTime()
+          );
+        }
+
+        function nightEnemyInOverworld() {
+          return (
+            nightEnemyExists() &&
+            state.currentMap === "overworld" &&
+            isNightTime()
+          );
+        }
+
+        function activeOverworldBoss() {
+          if (bossInOverworld()) return state.boss;
+          if (nightEnemyInOverworld()) return state.nightEnemy;
+          return null;
         }
 
         function bossCenter() {
-          const b = state.boss;
+          const b = activeOverworldBoss();
+          if (!b) return playerCenter();
           return { x: b.x + b.w * 0.5, y: b.y + b.h * 0.5 };
         }
 
@@ -2242,13 +2301,15 @@
         }
 
         function bossArenaContains(x, y) {
-          if (!bossExists()) return false;
-          const a = state.boss.arena;
+          const b = activeOverworldBoss();
+          if (!b) return false;
+          const a = b.arena;
           return x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h;
         }
 
         function bossTapBox() {
-          const b = state.boss;
+          const b = activeOverworldBoss();
+          if (!b) return { x: 0, y: 0, w: 0, h: 0 };
           return { x: b.x - 4, y: b.y - 12, w: b.w + 8, h: b.h + 16 };
         }
 
@@ -2264,10 +2325,11 @@
         }
 
         function bossUiVisible() {
-          if (!bossInOverworld()) return false;
+          const b = activeOverworldBoss();
+          if (!b) return false;
           const p = playerCenter();
-          const b = bossCenter();
-          return state.boss.active || dist2(p.x, p.y, b.x, b.y) <= 122 * 122;
+          const c = { x: b.x + b.w * 0.5, y: b.y + b.h * 0.5 };
+          return b.active || dist2(p.x, p.y, c.x, c.y) <= 122 * 122;
         }
 
         function refreshBattleUi() {
@@ -2277,7 +2339,8 @@
           battleControls.classList.toggle("show", visible);
           battleHud.setAttribute("aria-hidden", String(!visible));
           if (!visible) return;
-          const boss = state.boss;
+          const boss = activeOverworldBoss();
+          if (!boss) return;
           const priestPct = clamp(
             (state.player.hp / state.player.maxHp) * 100,
             0,
@@ -2288,9 +2351,11 @@
           bossHpFill.style.width = `${bossPct}%`;
           priestHpLabel.textContent = `${state.player.hp}/${state.player.maxHp}`;
           bossHpLabel.textContent = `${Math.max(0, boss.hp)}/${boss.maxHp}`;
+          if (battleTitle) battleTitle.textContent = boss.name.toUpperCase();
+          attackBtn.setAttribute("aria-label", `Attack ${boss.name}`);
           battleMeta.textContent = boss.active
             ? "Stay close and strike with ⚔"
-            : "Tap Endermar or ⚔ to start";
+            : `Tap ${boss.name} or ⚔ to start`;
           attackBtn.disabled =
             state.transition.mode !== "none" ||
             state.dialog.open ||
@@ -4496,6 +4561,7 @@
               seed: Math.random() * 999,
             },
             boss: createEndermar(),
+            nightEnemy: createNether(),
             won: false,
             mcq: createMcqState(),
           };
@@ -4654,8 +4720,9 @@
         }
 
         function retreatBoss(noticeText = "") {
-          if (!state || !state.boss) return;
-          const b = state.boss;
+          if (!state) return;
+          const b = activeOverworldBoss() || state.boss;
+          if (!b) return;
           b.active = false;
           b.projectiles.length = 0;
           b.x = b.originX;
@@ -4668,8 +4735,8 @@
         }
 
         function startBossFight() {
-          if (!bossInOverworld()) return false;
-          const b = state.boss;
+          const b = activeOverworldBoss();
+          if (!b) return false;
           b.active = true;
           b.orbCooldown = Math.min(b.orbCooldown, 0.7);
           const c = bossCenter();
@@ -4677,23 +4744,27 @@
           if (!b.introSeen) {
             b.introSeen = true;
             showDialogue(
-              "Endermar",
+              b.name,
               "If you want the tech hub, you will have to fight me first.",
               3.2,
             );
             showNotice(
-              "Endermar blocks the tech hub. Use ⚔ when close and avoid the dark orbs.",
+              `${b.name} blocks the tech hub. Use ⚔ when close and avoid the dark orbs.`,
               4.0,
             );
           } else {
-            showNotice("Endermar surges forward from the tech hub steps.", 2.0);
+            showNotice(
+              `${b.name} surges forward from the tech hub steps.`,
+              2.0,
+            );
           }
           refreshBattleUi();
           return true;
         }
 
         function defeatBoss() {
-          const b = state.boss;
+          const b = activeOverworldBoss();
+          if (!b) return;
           b.alive = false;
           b.active = false;
           b.projectiles.length = 0;
@@ -4718,16 +4789,16 @@
           state.floaters.push({
             x: b.x - 12,
             y: b.y - 10,
-            text: `Endermar +${b.reward}`,
+            text: `${b.name} +${b.reward}`,
             life: 1.35,
             color: "#ffe38b",
           });
           showDialogue(
             "Village",
-            "Endermar falls away from the tech hub steps. The tech hub is safe again. Reward: 60 coins.",
+            `${b.name} falls away from the tech hub steps. The tech hub is safe again. Reward: ${b.reward} coins.`,
             4.8,
           );
-          showNotice("Endermar is defeated.", 3.0);
+          showNotice(`${b.name} is defeated.`, 3.0);
           updateHud();
           maybeWin();
         }
@@ -4761,11 +4832,13 @@
             state.player.x = 798;
             state.player.y = 566;
             state.player.dir = "up";
-            retreatBoss("Endermar forces the priest back to the piazza.");
+            const activeBoss = activeOverworldBoss();
+            const enemyName = activeBoss ? activeBoss.name : "The enemy";
+            retreatBoss(`${enemyName} forces the priest back to the piazza.`);
             centerCamera(true);
             showDialogue(
               "Village",
-              "The priest catches his breath in the piazza. Endermar still waits in front of the tech hub.",
+              `The priest catches his breath in the piazza. ${enemyName} still waits in front of the tech hub.`,
               3.8,
             );
           }
@@ -4775,25 +4848,27 @@
 
         function priestAttack() {
           if (
-            !bossInOverworld() ||
+            !activeOverworldBoss() ||
             state.transition.mode !== "none" ||
             state.magic.active ||
             state.dialog.open
           )
             return false;
           if (state.player.attackCooldown > 0) return false;
+          const b = activeOverworldBoss();
+          if (!b) return false;
           const c = bossCenter();
           setPlayerDirToward(c.x, c.y);
-          if (!state.boss.active) startBossFight();
+          if (!b.active) startBossFight();
           state.player.attackTimer = 0.16;
           state.player.attackCooldown = 0.28;
           state.player.poseTimer = Math.max(state.player.poseTimer, 0.08);
           const hit = priestAttackRect();
           const bossBody = {
-            x: state.boss.x,
-            y: state.boss.y + 3,
-            w: state.boss.w,
-            h: state.boss.h - 3,
+            x: b.x,
+            y: b.y + 3,
+            w: b.w,
+            h: b.h - 3,
           };
           const p = playerCenter();
           for (let i = 0; i < 6; i++) {
@@ -4807,39 +4882,26 @@
               size: 1,
             });
           }
-          if (
-            state.boss.active &&
-            overlap(hit, bossBody) &&
-            state.boss.invuln <= 0
-          ) {
-            state.boss.hp = Math.max(0, state.boss.hp - 1);
-            state.boss.invuln = 0.34;
-            state.boss.hitFlash = 1;
+          if (b.active && overlap(hit, bossBody) && b.invuln <= 0) {
+            b.hp = Math.max(0, b.hp - 1);
+            b.invuln = 0.34;
+            b.hitFlash = 1;
             const bc = bossCenter();
             let pushX = bc.x - p.x;
             let pushY = bc.y - p.y;
             const len = Math.hypot(pushX, pushY) || 1;
             pushX = (pushX / len) * 6;
             pushY = (pushY / len) * 6;
-            moveWithCollision(
-              state.boss,
-              pushX,
-              pushY,
-              currentMap(),
-              null,
-              false,
-              true,
-            );
+            moveWithCollision(b, pushX, pushY, currentMap(), null, false, true);
             spawnMiracleBurst(bc.x, bc.y, "#f0d86a", "#fff6d6", 14);
-            if (state.boss.hp <= 0) defeatBoss();
+            if (b.hp <= 0) defeatBoss();
           }
           refreshBattleUi();
           return true;
         }
 
         function updateBossCombat(dt) {
-          if (!state || !state.boss) return;
-          const b = state.boss;
+          if (!state || !state.boss || !state.nightEnemy) return;
           state.player.attackCooldown = Math.max(
             0,
             state.player.attackCooldown - dt,
@@ -4847,8 +4909,16 @@
           state.player.attackTimer = Math.max(0, state.player.attackTimer - dt);
           state.player.invuln = Math.max(0, state.player.invuln - dt);
           state.player.hurtTimer = Math.max(0, state.player.hurtTimer - dt);
-          b.invuln = Math.max(0, b.invuln - dt);
-          b.hitFlash = Math.max(0, b.hitFlash - dt * 4);
+          state.boss.invuln = Math.max(0, state.boss.invuln - dt);
+          state.boss.hitFlash = Math.max(0, state.boss.hitFlash - dt * 4);
+          state.nightEnemy.invuln = Math.max(0, state.nightEnemy.invuln - dt);
+          state.nightEnemy.hitFlash = Math.max(
+            0,
+            state.nightEnemy.hitFlash - dt * 4,
+          );
+
+          const b = activeOverworldBoss();
+          if (!b) return;
 
           if (state.currentMap !== "overworld") {
             if (b.active) retreatBoss();
@@ -4904,7 +4974,7 @@
             !bossArenaContains(pc.x, pc.y) &&
             dist2(pc.x, pc.y, b.originX, b.originY) > 170 * 170
           ) {
-            retreatBoss("Endermar retreats back to the tech hub steps.");
+            retreatBoss(`${b.name} retreats back to the tech hub steps.`);
             return;
           }
 
@@ -5521,15 +5591,17 @@
               kind: "villager",
             });
           }
-          if (map.id === "overworld" && bossExists() && !ignoreBoss) {
-            const b = state.boss;
-            solids.push({
-              x: b.x,
-              y: b.y + 5,
-              w: b.w,
-              h: b.h - 5,
-              kind: "boss",
-            });
+          if (map.id === "overworld" && !ignoreBoss) {
+            const b = activeOverworldBoss();
+            if (b) {
+              solids.push({
+                x: b.x,
+                y: b.y + 5,
+                w: b.w,
+                h: b.h - 5,
+                kind: "boss",
+              });
+            }
           }
           if (includePlayer) {
             solids.push({
@@ -5706,7 +5778,8 @@
         }
 
         function nearestFacingBoss() {
-          if (!bossInOverworld()) return null;
+          const b = activeOverworldBoss();
+          if (!b) return null;
           const probe = {
             x: state.player.x,
             y: state.player.y,
@@ -5718,7 +5791,6 @@
           else if (state.player.dir === "down") probe.y += amount;
           else if (state.player.dir === "left") probe.x -= amount;
           else if (state.player.dir === "right") probe.x += amount;
-          const b = state.boss;
           const hit = { x: b.x - 3, y: b.y - 2, w: b.w + 6, h: b.h + 4 };
           return overlap(probe, hit) ? b : null;
         }
@@ -5996,7 +6068,8 @@
           const wx = px + state.camera.x;
           const wy = py + state.camera.y;
 
-          if (bossInOverworld()) {
+          const b = activeOverworldBoss();
+          if (b) {
             const bossBox = bossTapBox();
             if (
               wx >= bossBox.x &&
@@ -6006,7 +6079,7 @@
             ) {
               const c = bossCenter();
               setPlayerDirToward(c.x, c.y);
-              if (state.boss.active) priestAttack();
+              if (b.active) priestAttack();
               else startBossFight();
               return true;
             }
@@ -6352,8 +6425,8 @@
               if (
                 state.currentMap === "overworld" &&
                 tr.targetMap !== "overworld" &&
-                bossExists() &&
-                state.boss.active
+                ((bossExists() && state.boss.active) ||
+                  (nightEnemyExists() && state.nightEnemy.active))
               )
                 retreatBoss();
               state.currentMap = tr.targetMap;
@@ -8853,13 +8926,39 @@
           const sy = Math.round(
             b.y - state.camera.y - 14 + Math.sin(b.step * 3.2) * 0.4,
           );
-          const robe = b.hitFlash > 0 ? "#5a2436" : "#17111f";
-          const robeMid = b.hitFlash > 0 ? "#6a2e44" : "#24192f";
-          const robeHi = b.hitFlash > 0 ? "#7d4260" : "#362445";
-          const hood = b.hitFlash > 0 ? "#432032" : "#100c16";
-          const eye = "#d7a9ff";
-          const trim = "#6f48be";
-          const trim2 = "#9e79ef";
+          const isNether = b.id === "nether";
+          const robe = isNether
+            ? b.hitFlash > 0
+              ? "#7a4f30"
+              : "#2b1d13"
+            : b.hitFlash > 0
+              ? "#5a2436"
+              : "#17111f";
+          const robeMid = isNether
+            ? b.hitFlash > 0
+              ? "#8b5f3b"
+              : "#3a2719"
+            : b.hitFlash > 0
+              ? "#6a2e44"
+              : "#24192f";
+          const robeHi = isNether
+            ? b.hitFlash > 0
+              ? "#a7754b"
+              : "#4c3422"
+            : b.hitFlash > 0
+              ? "#7d4260"
+              : "#362445";
+          const hood = isNether
+            ? b.hitFlash > 0
+              ? "#68442a"
+              : "#1f140d"
+            : b.hitFlash > 0
+              ? "#432032"
+              : "#100c16";
+          const eye = isNether ? "#ffd7a0" : "#d7a9ff";
+          const trim = isNether ? "#8f5f30" : "#6f48be";
+          const trim2 = isNether ? "#c18a4d" : "#9e79ef";
+          const face = isNether ? "#3c2a1b" : "#2a2033";
           rect(sx + 4, sy + 26, 16, 3, "rgba(0,0,0,0.26)");
 
           if (b.dir === "up") {
@@ -8879,7 +8978,7 @@
             const right = b.dir === "right";
             rect(sx + (right ? 7 : 5), sy + 0, 11, 3, hood);
             rect(sx + (right ? 7 : 4), sy + 3, 14, 9, hood);
-            rect(sx + (right ? 12 : 6), sy + 10, 6, 7, "#2a2033");
+            rect(sx + (right ? 12 : 6), sy + 10, 6, 7, face);
             rect(sx + (right ? 15 : 8), sy + 12, 1, 1, eye);
             rect(sx + (right ? 15 : 8), sy + 15, 1, 1, eye);
             rect(sx + (right ? 7 : 4), sy + 16, 12, 9, robeMid);
@@ -8892,7 +8991,7 @@
 
           rect(sx + 7, sy + 0, 10, 3, hood);
           rect(sx + 5, sy + 3, 14, 9, hood);
-          rect(sx + 7, sy + 9, 10, 7, "#2a2033");
+          rect(sx + 7, sy + 9, 10, 7, face);
           rect(sx + 9, sy + 12, 2, 1, eye);
           rect(sx + 14, sy + 12, 2, 1, eye);
           rect(sx + 7, sy + 16, 10, 4, robeHi);
@@ -8931,8 +9030,9 @@
         }
 
         function drawBossProjectiles() {
-          if (!bossInOverworld()) return;
-          for (const orb of state.boss.projectiles) {
+          const b = activeOverworldBoss();
+          if (!b) return;
+          for (const orb of b.projectiles) {
             const sx = Math.round(orb.x - state.camera.x - 3);
             const sy = Math.round(orb.y - state.camera.y - 3);
             rect(sx + 1, sy + 1, 6, 6, "#24142f");
@@ -9326,11 +9426,13 @@
           const entities = [];
           for (const v of map.villagers)
             entities.push({ y: v.y + v.h, kind: "villager", data: v });
-          if (map.id === "overworld" && bossExists())
+          const overworldBoss =
+            map.id === "overworld" ? activeOverworldBoss() : null;
+          if (overworldBoss)
             entities.push({
-              y: state.boss.y + state.boss.h,
+              y: overworldBoss.y + overworldBoss.h,
               kind: "boss",
-              data: state.boss,
+              data: overworldBoss,
             });
           if (map.id === "overworld")
             for (const c of state.chickens)
@@ -9804,8 +9906,9 @@
           ev.preventDefault();
           ev.stopPropagation();
           if (state?.dialog?.open) hideDialogue();
-          if (!bossInOverworld()) return;
-          if (!state.boss.active) startBossFight();
+          const b = activeOverworldBoss();
+          if (!b) return;
+          if (!b.active) startBossFight();
           priestAttack();
         });
         mcqModal.addEventListener("click", (ev) => {
