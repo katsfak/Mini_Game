@@ -4384,6 +4384,7 @@
               hurtTimer: 0,
               hp: 6,
               maxHp: 6,
+              inWater: false,
               speech: { text: "", time: 0, max: 0, pop: 0 },
             },
             inventory: {
@@ -5423,7 +5424,9 @@
           ignoreBoss = false,
           moverKind = "npc",
         ) {
-          const solids = map.blocks.slice();
+          const solids = map.blocks.filter(
+            (b) => !(moverKind === "player" && b.kind === "water"),
+          );
           for (const v of map.villagers) {
             if (v.id === ignoreVillagerId) continue;
             if (moverKind === "player" && v.blocksPlayer === false) continue;
@@ -6263,6 +6266,16 @@
           if (state.transition.mode !== "none" || state.mcq.open) return;
 
           const map = currentMap();
+          const playerBody = {
+            x: state.player.x + 2,
+            y: state.player.y + 5,
+            w: state.player.w - 4,
+            h: state.player.h - 4,
+          };
+          const inWaterNow =
+            map.id === "overworld" &&
+            map.ponds.some((pond) => overlap(playerBody, pond));
+          state.player.inWater = inWaterNow;
           let dxInput = 0;
           let dyInput = 0;
 
@@ -6304,10 +6317,11 @@
             }
           }
 
-          const speed =
+          const baseSpeed =
             map.type === "overworld"
               ? state.player.speed
               : state.player.speed - 8;
+          const speed = state.player.inWater ? baseSpeed * 0.42 : baseSpeed;
           const dx = state.magic.active ? 0 : dxInput * speed * dt;
           const dy = state.magic.active ? 0 : dyInput * speed * dt;
           const moving =
@@ -6323,10 +6337,27 @@
 
           moveWithCollision(state.player, dx, dy, map);
 
+          const playerBodyAfterMove = {
+            x: state.player.x + 2,
+            y: state.player.y + 5,
+            w: state.player.w - 4,
+            h: state.player.h - 4,
+          };
+          state.player.inWater =
+            map.id === "overworld" &&
+            map.ponds.some((pond) => overlap(playerBodyAfterMove, pond));
+
           if (moving) {
-            state.player.stepClock += dt * 10;
+            state.player.stepClock += dt * (state.player.inWater ? 7 : 10);
             state.player.stepFrame = (state.player.stepClock | 0) & 1;
-            state.player.bob = Math.sin(state.player.stepClock * Math.PI) * 0.8;
+            state.player.bob =
+              Math.sin(state.player.stepClock * Math.PI) *
+              (state.player.inWater ? 0.4 : 0.8);
+          } else if (state.player.inWater) {
+            state.player.stepClock += dt * 4;
+            state.player.stepFrame = (state.player.stepClock | 0) & 1;
+            state.player.bob =
+              Math.sin(state.player.stepClock * Math.PI) * 0.25;
           } else {
             state.player.bob *= Math.pow(0.7, dt * 60);
           }
@@ -8906,6 +8937,47 @@
             state.player.stepFrame,
             state.player.castPose || state.player.poseTimer > 0,
           );
+
+          if (state.player.inWater) {
+            const timeSec = performance.now() / 1000;
+            const waterY = Math.round(
+              state.player.y - state.camera.y + state.player.h * 0.58,
+            );
+            const wave =
+              Math.sin(timeSec * 9 + state.player.x * 0.1) > 0 ? 1 : 0;
+            rect(
+              Math.round(state.player.x - state.camera.x - 1),
+              waterY,
+              state.player.w + 2,
+              7,
+              "rgba(74,157,216,0.65)",
+            );
+            rect(
+              Math.round(state.player.x - state.camera.x - 1),
+              waterY + wave,
+              state.player.w + 2,
+              1,
+              "rgba(198,236,255,0.75)",
+            );
+            rect(
+              Math.round(state.player.x - state.camera.x + 1),
+              Math.round(
+                state.player.y - state.camera.y + state.player.h * 0.54,
+              ),
+              2,
+              1,
+              "rgba(232,248,255,0.75)",
+            );
+            rect(
+              Math.round(state.player.x - state.camera.x + state.player.w - 3),
+              Math.round(
+                state.player.y - state.camera.y + state.player.h * 0.56,
+              ),
+              2,
+              1,
+              "rgba(232,248,255,0.75)",
+            );
+          }
         }
 
         function drawQuestMarker(v, timeSec) {
