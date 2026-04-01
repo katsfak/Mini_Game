@@ -9361,10 +9361,20 @@
           const n = nightAmount();
           if (n <= 0.001) return;
           ctx.save();
-          ctx.globalAlpha = n * 0.38;
-          rect(0, 0, scene.width, scene.height, "#0d1b33");
-          ctx.globalAlpha = n * 0.22;
-          rect(0, 0, scene.width, 44, "#13284a");
+          ctx.globalAlpha = n * 0.5;
+          rect(0, 0, scene.width, scene.height, "#08101f");
+
+          const moonX = scene.width - 42;
+          const moonY = 26;
+          ctx.globalAlpha = n * 0.2;
+          rect(moonX - 2, moonY - 2, 4, 4, "#f1f5ff");
+
+          ctx.globalAlpha = n * 0.14;
+          rect(moonX - 18, moonY - 18, 36, 36, "#a9c4ec");
+          ctx.globalAlpha = n * 0.09;
+          rect(moonX - 32, moonY - 32, 64, 64, "#88abd8");
+          ctx.globalAlpha = n * 0.05;
+          rect(moonX - 52, moonY - 52, 104, 104, "#6f98c9");
           ctx.restore();
         }
 
