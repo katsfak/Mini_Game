@@ -67,45 +67,56 @@ When complete, a village completion banner appears with final fruit and coin sta
 Current quest set includes:
 
 1. Blueberry Basket
+
 - Giver: Yiayia
 - Goal: Bring 5 blueberries
 
 2. Village Donations
+
 - Giver: Mayor
 - Goal: Collect 18 coins for village fund
 
 3. Power Up the Tech Hub
+
 - Giver: Tech Steward (Deacon)
 - Goal: Activate server core in tech hub
 
 4. Fruit for the Shop
+
 - Giver: Merchant Eleni
 - Goal: Bring 2 bananas and 2 apples
 
 5. Collect All Gossip
+
 - Goal: Hear every village rumor
 - Reward includes wind blessing charges
 
 6. Cafe Starter
+
 - Goal: Buy 1 coffee and 1 sweets
 
 7. Athina's Chicken Stove
+
 - Giver: Athina
 - Goal: Bring 1 chicken
 - Result: Spawns a decorative stove and custom dialogue
 
 8. Moonlight Swim (night-only)
+
 - Giver: Takis
 - Goal: Enter northern pool at night
 
 9. Grand Tichu Witness (night-only)
+
 - Giver: Yorgos (Tichu table)
 - Goal: Speak with Christos at night and report back
 
 10. Java Drill: Tech Hub
+
 - Goal: Master all 15 Java MCQs in tech hub
 
 11. Java Drill: School
+
 - Goal: Master all 15 Java MCQs in school
 
 ## Economy and Items
@@ -249,3 +260,13 @@ Useful values to tweak in code:
 - Enemy HP/reward/projectile cadence
 - Quest rewards and requirements
 - Overlay intensities for night visuals
+
+## Future Feature Ideas
+
+Possible additions if you want to expand the game later:
+
+- Multiplayer with chat for shared village exploration and co-op quests
+- Expanded combat encounters with new enemy types, combo attacks, and party support
+- Save/load support so progress persists between sessions
+- Crafting or cooking systems that use fruit and shop items
+- More village events, festivals, and time-limited side quests
